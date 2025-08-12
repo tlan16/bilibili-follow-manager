@@ -284,17 +284,21 @@ class BilibiliManagerGUI:
                     self.status_indicator.config(fg=self.colors['success'])
                     self.status_label.config(text="已登录", fg=self.colors['success'])
                     self.user_info_label.config(text=f"👋 欢迎回来，{user_info.get('uname', '未知')} (ID: {user_info.get('mid', '未知')})")
+                    self.login_button.config(text="🚪 退出登录", command=self.logout, bg=self.colors['danger'])
                     self.enable_buttons()
                     self.update_status("✅ 登录成功，可以开始使用了")
                 else:
                     self.status_indicator.config(fg=self.colors['warning'])
                     self.status_label.config(text="登录已过期", fg=self.colors['warning'])
+                    self.login_button.config(text="🔐 设置登录", command=self.setup_login, bg=self.colors['primary'])
                     self.update_status("⚠️ 登录信息已过期，请重新设置")
             except Exception:
                 self.status_indicator.config(fg=self.colors['danger'])
                 self.status_label.config(text="配置错误", fg=self.colors['danger'])
+                self.login_button.config(text="🔐 设置登录", command=self.setup_login, bg=self.colors['primary'])
                 self.update_status("❌ 配置文件错误")
         else:
+            self.login_button.config(text="🔐 设置登录", command=self.setup_login, bg=self.colors['primary'])
             self.update_status("💡 首次使用？点击\"设置登录\"开始吧")
     
     def setup_login(self):
@@ -315,10 +319,54 @@ class BilibiliManagerGUI:
         thread.daemon = True
         thread.start()
     
+    def logout(self):
+        """退出登录，删除配置文件"""
+        # 确认退出
+        if not messagebox.askyesno("🚪 确认退出", 
+                                  "确定要退出登录吗？\n\n这将删除本地保存的登录信息，\n下次需要重新登录。", 
+                                  icon="question"):
+            return
+        
+        try:
+            # 删除配置文件
+            if os.path.exists('config.json'):
+                os.remove('config.json')
+            
+            # 重置API对象
+            self.api = None
+            
+            # 重置UI状态
+            self.status_indicator.config(fg=self.colors['danger'])
+            self.status_label.config(text="未登录", fg=self.colors['text_primary'])
+            self.user_info_label.config(text="")
+            self.login_button.config(text="🔐 设置登录", command=self.setup_login, bg=self.colors['primary'])
+            
+            # 禁用所有功能按钮
+            self.refresh_button.config(state="disabled")
+            self.batch_unfollow_button.config(state="disabled")
+            self.export_button.config(state="disabled")
+            self.import_follow_button.config(state="disabled")
+            self.select_all_button.config(state="disabled")
+            self.select_none_button.config(state="disabled")
+            
+            # 清空关注列表
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            self.following_list = []
+            self.count_label.config(text="共 0 个关注")
+            
+            # 更新状态
+            self.update_status("🚪 已退出登录，点击\"设置登录\"重新开始")
+            messagebox.showinfo("🎉 退出成功", "已成功退出登录！")
+            
+        except Exception as e:
+            messagebox.showerror("❌ 错误", f"退出登录失败：{str(e)}")
+            self.update_status("❌ 退出登录失败")
+
     def login_success(self):
         self.login_button.config(state="normal")
         messagebox.showinfo("🎉 成功", "登录设置成功！")
-        self.check_config()
+        self.check_config()  # 重新检查配置，更新按钮状态
     
     def login_failed(self):
         self.login_button.config(state="normal")
