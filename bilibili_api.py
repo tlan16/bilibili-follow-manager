@@ -27,7 +27,7 @@ class BilibiliAPI:
             with open(config_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except FileNotFoundError:
-            raise FileNotFoundError(f"配置文件 {config_path} 不存在，请复制 config.example.json 并重命名为 config.json")
+            raise FileNotFoundError(f"配置文件 {config_path} 不存在，请先设置登录")
         except json.JSONDecodeError:
             raise ValueError(f"配置文件 {config_path} 格式错误")
     
@@ -87,6 +87,7 @@ class BilibiliAPI:
         
         return data['data']
     
+
     def get_all_following(self) -> List[Dict]:
         """获取所有关注用户
         
@@ -107,6 +108,19 @@ class BilibiliAPI:
                 if not following_list:
                     break
                 
+                # 处理每个用户的数据
+                for user in following_list:
+                    # 转换时间戳为可读时间
+                    if 'mtime' in user and user['mtime']:
+                        try:
+                            import datetime
+                            mtime = datetime.datetime.fromtimestamp(user['mtime'])
+                            user['mtime_str'] = mtime.strftime('%Y-%m-%d %H:%M')
+                        except:
+                            user['mtime_str'] = '未知'
+                    else:
+                        user['mtime_str'] = '未知'
+                
                 all_following.extend(following_list)
                 self.logger.info(f"已获取 {len(all_following)} 个关注用户")
                 
@@ -124,6 +138,44 @@ class BilibiliAPI:
         self.logger.info(f"总共获取到 {len(all_following)} 个关注用户")
         return all_following
     
+    def follow_user(self, fid: int) -> bool:
+        """关注用户
+        
+        Args:
+            fid: 用户ID
+            
+        Returns:
+            是否成功
+        """
+        # 测试模式：只模拟操作，不实际执行
+        if self.config['settings'].get('test_mode', False):
+            time.sleep(0.1)  # 模拟网络延迟
+            return True
+        
+        url = "https://api.bilibili.com/x/relation/modify"
+        data = {
+            'fid': fid,
+            'act': 1,  # 1表示关注
+            'csrf': self.config['cookies']['bili_jct']
+        }
+        
+        try:
+            response = self._make_request('POST', url, data=data)
+            result = response.json()
+            
+            if result['code'] == 0:
+                return True
+            elif result['code'] == 22013:
+                self.logger.warning(f"用户已关注 (用户ID: {fid})")
+                return True  # 已关注也算成功
+            else:
+                self.logger.error(f"关注失败 (用户ID: {fid}): {result['message']}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"关注异常 (用户ID: {fid}): {e}")
+            return False
+
     def unfollow_user(self, fid: int) -> bool:
         """取消关注用户
         
