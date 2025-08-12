@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+B站关注管理器 - 作者: 一懒众衫小 (Noeky)
+https://github.com/Noeky/bilibili-follow-manager
+"""
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -191,7 +195,20 @@ class BilibiliManagerGUI:
                                              activebackground='#389E0D',
                                              activeforeground='white',
                                              disabledforeground='lightgray')
-        self.import_follow_button.pack(side=tk.LEFT)
+        self.import_follow_button.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # 关于按钮
+        self.about_button = tk.Button(button_frame, text="ℹ️ 关于", 
+                                     command=self.show_about, 
+                                     bg='#722ED1',
+                                     fg='white',
+                                     font=('Microsoft YaHei UI', 9),
+                                     relief='flat',
+                                     padx=15, pady=8,
+                                     cursor='hand2',
+                                     activebackground='#531DAB',
+                                     activeforeground='white')
+        self.about_button.pack(side=tk.LEFT)
         
 
         
@@ -625,6 +642,31 @@ class BilibiliManagerGUI:
     
     def update_status(self, message):
         self.status_bar.config(text=message)
+    
+    def show_about(self):
+        """显示关于对话框"""
+        about_text = """
+B站关注管理器 v1.0
+Bilibili Follow Manager
+
+🎬 现代化的B站关注管理工具
+
+作者: 一懒众衫小 (Noeky)
+GitHub: https://github.com/Noeky/bilibili-follow-manager
+许可证: MIT License - 完全免费开源
+
+Copyright © 2025 一懒众衫小 (Noeky)
+
+✨ 功能特色:
+• 自动登录和凭据保存
+• 智能展示关注用户信息
+• 批量取消关注操作
+• 数据导出和导入功能
+
+💝 如果这个项目对您有帮助，
+请在GitHub上给个Star支持一下！
+        """
+        messagebox.showinfo("关于 B站关注管理器", about_text.strip())
 
 def main():
     root = tk.Tk()

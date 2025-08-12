@@ -1,4 +1,6 @@
 @echo off
+rem B站关注管理器 - 作者: 一懒众衫小 (Noeky)
+
 setlocal EnableDelayedExpansion
 chcp 65001 >nul
 
