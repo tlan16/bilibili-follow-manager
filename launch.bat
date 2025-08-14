@@ -4,6 +4,9 @@ rem B站关注管理器 - 作者: 一懒众衫小 (Noeky)
 setlocal EnableDelayedExpansion
 chcp 65001 >nul
 
+echo 安装依赖
+pip install -r requirements.txt >nul 2>&1
+
 set PYTHON_CMD=
 python --version >nul 2>&1
 if !errorlevel! equ 0 (
