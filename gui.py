@@ -18,6 +18,7 @@ class BilibiliManagerGUI:
         
         self.api = None
         self.following_list = []
+        self.checked_items = {}  # 存储选中状态
         
         self.create_widgets()
         self.check_config()
@@ -208,6 +209,29 @@ class BilibiliManagerGUI:
         # 列表工具栏
         list_toolbar = tk.Frame(list_card, bg=self.colors['bg_dark'])
         list_toolbar.pack(fill=tk.X, pady=(0, 15))
+
+                
+        self.batch_check_button = tk.Button(list_toolbar, text="批量勾选", 
+                                           command=self.batch_check_selected, state="disabled",
+                                           bg='#F0F0F0',
+                                           fg=self.colors['text_primary'],
+                                           font=('Microsoft YaHei UI', 8),
+                                           relief='flat',
+                                           padx=12, pady=5,
+                                           cursor='hand2',
+                                           activebackground='#E0E0E0')
+        self.batch_check_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.batch_uncheck_button = tk.Button(list_toolbar, text="批量取消勾选", 
+                                           command=self.batch_uncheck_selected, state="disabled",
+                                           bg='#F0F0F0',
+                                           fg=self.colors['text_primary'],
+                                           font=('Microsoft YaHei UI', 8),
+                                           relief='flat',
+                                           padx=12, pady=5,
+                                           cursor='hand2',
+                                           activebackground='#E0E0E0')
+        self.batch_uncheck_button.pack(side=tk.LEFT, padx=(0, 10))
         
         self.select_all_button = tk.Button(list_toolbar, text="全选", 
                                            command=self.select_all, state="disabled",
@@ -243,7 +267,7 @@ class BilibiliManagerGUI:
         
         # 创建Treeview
         columns = ("用户名", "UID", "关注时间", "签名")
-        self.tree = ttk.Treeview(table_frame, columns=columns, show="tree headings", height=15)
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="tree headings", height=15, selectmode="extended")
         
         # 设置列标题
         self.tree.heading("#0", text="✓")
@@ -256,9 +280,11 @@ class BilibiliManagerGUI:
         self.tree.column("#0", width=60, minwidth=60)
         self.tree.column("用户名", width=180, minwidth=150)
         self.tree.column("UID", width=120, minwidth=100)
-        self.tree.column("关注时间", width=150, minwidth=120)
         self.tree.column("签名", width=300, minwidth=200)
         self.tree.column("关注时间", width=160, minwidth=140)
+        
+        # 绑定点击事件
+        self.tree.bind("<ButtonRelease-1>", self.on_tree_click)
         
         # 滚动条
         scrollbar_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.tree.yview)
@@ -352,6 +378,8 @@ class BilibiliManagerGUI:
             self.import_follow_button.config(state="disabled")
             self.select_all_button.config(state="disabled")
             self.select_none_button.config(state="disabled")
+            self.batch_check_button.config(state="disabled")
+            self.batch_uncheck_button.config(state="disabled")
             
             # 清空关注列表
             for item in self.tree.get_children():
@@ -384,6 +412,8 @@ class BilibiliManagerGUI:
         self.import_follow_button.config(state="normal")
         self.select_all_button.config(state="normal")
         self.select_none_button.config(state="normal")
+        self.batch_check_button.config(state="normal")
+        self.batch_uncheck_button.config(state="normal")
     
     def refresh_following(self):
         def refresh_thread():
@@ -405,6 +435,7 @@ class BilibiliManagerGUI:
             self.tree.delete(item)
         
         self.following_list = following_list
+        self.checked_items = {}  # 重置选中状态
         
         for user in following_list:
             # 格式化时间显示
@@ -415,12 +446,14 @@ class BilibiliManagerGUI:
             if not sign:
                 sign = '暂无签名'
             
-            self.tree.insert("", tk.END, values=(
+            # 插入时设置默认为未选中
+            item_id = self.tree.insert("", tk.END, text="☐", values=(
                 user.get('uname', '未知'),
                 user.get('mid', ''),
                 mtime_str,
                 sign
             ))
+            self.checked_items[item_id] = False
         
         self.refresh_button.config(state="normal")
         self.count_label.config(text=f"共 {len(following_list)} 个关注")
@@ -433,13 +466,52 @@ class BilibiliManagerGUI:
     
     def select_all(self):
         for item in self.tree.get_children():
+            self.checked_items[item] = True
+            self.tree.item(item, text="☑")
             self.tree.selection_add(item)
     
     def select_none(self):
+        for item in self.tree.get_children():
+            self.checked_items[item] = False
+            self.tree.item(item, text="☐")
         self.tree.selection_remove(self.tree.selection())
     
-    def batch_unfollow(self):
+    def batch_check_selected(self):
+        """批量勾选树视图中当前选中的项目"""
         selected_items = self.tree.selection()
+        
+        if not selected_items:
+            messagebox.showinfo("提示", "请先用鼠标点击选择要勾选的行（可按住Ctrl或Shift多选）")
+            return
+            
+        # 勾选所有选中的项
+        for item in selected_items:
+            self.checked_items[item] = True
+            self.tree.item(item, text="☑")
+        
+        # 更新状态
+        self.update_status(f"✅ 已批量勾选 {len(selected_items)} 个项目")
+    
+    def batch_uncheck_selected(self):
+        """批量取消勾选树视图中当前选中的项目"""
+        selected_items = self.tree.selection()
+        
+        if not selected_items:
+            messagebox.showinfo("提示", "请先用鼠标点击选择要取消勾选的行（可按住Ctrl或Shift多选）")
+            return
+            
+        # 取消勾选所有选中的项
+        for item in selected_items:
+            self.checked_items[item] = False
+            self.tree.item(item, text="☐")
+            # 同时从树的选择中移除（可选，根据需求决定）
+            # self.tree.selection_remove(item)
+        
+        # 更新状态
+        self.update_status(f"✅ 已批量取消勾选 {len(selected_items)} 个项目")
+    
+    def batch_unfollow(self):
+        selected_items = [item for item, checked in self.checked_items.items() if checked]
         if not selected_items:
             messagebox.showwarning("⚠️ 警告", "请先选择要取消关注的用户")
             return
@@ -654,6 +726,35 @@ Copyright © 2025 一懒众衫小 (Noeky)
 请在GitHub上给个Star支持一下！
         """
         messagebox.showinfo("关于 B站关注管理器", about_text.strip())
+        
+    def on_tree_click(self, event):
+        """处理树形视图的点击事件"""
+        region = self.tree.identify_region(event.x, event.y)
+        item = self.tree.identify_row(event.y)
+        
+        if not item:
+            return
+            
+        if region == "tree":  # 只有点击在图标区域时才切换勾选状态
+            # 切换选中状态
+            self.toggle_check(item)
+        # 其他区域的点击不处理，让Treeview默认的选择机制生效
+    
+    def toggle_check(self, item):
+        """切换选中状态"""
+        # 获取当前状态并切换
+        is_checked = self.checked_items.get(item, False)
+        self.checked_items[item] = not is_checked
+        
+        # 更新显示
+        if self.checked_items[item]:
+            self.tree.item(item, text="☑")
+            # 如果点击选中，也添加到 Treeview 的 selection
+            self.tree.selection_add(item)
+        else:
+            self.tree.item(item, text="☐")
+            # 如果取消选中，从 selection 中移除
+            self.tree.selection_remove(item)
 
 def main():
     root = tk.Tk()
