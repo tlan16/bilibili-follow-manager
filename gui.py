@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-B站关注管理器 - 作者: 一懒众衫小 (Noeky)
-https://github.com/Noeky/bilibili-follow-manager
-"""
-
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
@@ -18,10 +11,9 @@ class BilibiliManagerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("B站关注管理器")
-        self.root.geometry("900x700")
+        self.root.geometry("968x732")
         self.root.minsize(800, 600)
-        
-        # 设置现代化主题
+    
         self.setup_theme()
         
         self.api = None
@@ -31,18 +23,15 @@ class BilibiliManagerGUI:
         self.check_config()
     
     def setup_theme(self):
-        """设置现代化主题"""
         style = ttk.Style()
         
-        # 使用默认主题但自定义样式
         try:
             style.theme_use('vista')  # Windows现代主题
         except:
             style.theme_use('clam')   # 备用主题
         
-        # 自定义颜色
         self.colors = {
-            'primary': '#00A1D6',      # B站蓝
+            'primary': '#00A1D6',      
             'primary_dark': '#0084B4',
             'success': '#52C41A',
             'warning': '#FAAD14',
@@ -273,13 +262,11 @@ class BilibiliManagerGUI:
         
         # 滚动条
         scrollbar_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        scrollbar_x = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
-        self.tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        self.tree.configure(yscrollcommand=scrollbar_y.set)
         
         # 布局
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
-        scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
         
         # 状态栏
         status_frame = tk.Frame(main_container, bg=self.colors['bg_light'], height=30)

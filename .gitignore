@@ -1,5 +1,5 @@
-# 配置文件（包含敏感信息）
-config.json
+# 配置文件 和关注列表文件
+*.json
 
 # Python
 __pycache__/
