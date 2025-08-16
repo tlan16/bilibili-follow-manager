@@ -159,7 +159,7 @@ class BilibiliManagerGUI:
                                                disabledforeground='lightgray')
         self.batch_unfollow_button.pack(side=tk.LEFT, padx=(0, 15))
         
-        self.export_button = tk.Button(button_frame, text="📥 导出列表", 
+        self.export_button = tk.Button(button_frame, text="📥 导出所选用户", 
                                        command=self.export_list, 
                                        state="disabled",
                                        bg='#1890FF',
@@ -558,14 +558,15 @@ class BilibiliManagerGUI:
         thread.start()
     
     def export_list(self):
-        if not self.following_list:
-            messagebox.showwarning("⚠️ 警告", "关注列表为空")
+        selected_items = [item for item, checked in self.checked_items.items() if checked]
+        if not selected_items:
+            messagebox.showwarning("⚠️ 警告", "请先选择要导出的关注用户")
             return
         
         try:
             # 只导出重要的数据字段
             simplified_list = []
-            for user in self.following_list:
+            for user in selected_items:
                 simplified_user = {
                     '用户名': user.get('uname', '未知'),
                     'UID': user.get('mid', ''),
