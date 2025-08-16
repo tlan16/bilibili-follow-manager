@@ -36,7 +36,8 @@ class BilibiliAutoLogin:
         try:
             self.setup_driver()
             print("正在打开B站登录页面...")
-            self.driver.get("https://passport.bilibili.com/login")
+            if self.driver != None:
+                self.driver.get("https://passport.bilibili.com/login")
             
             print("请在浏览器中手动登录，程序将自动检测登录状态...")
             
@@ -45,7 +46,8 @@ class BilibiliAutoLogin:
             
             while time.time() - start_time < max_wait_time:
                 try:
-                    current_url = self.driver.current_url
+                    if self.driver != None:
+                        current_url = self.driver.current_url
                     
                     if any([
                         "www.bilibili.com" in current_url and "passport" not in current_url,
@@ -63,7 +65,8 @@ class BilibiliAutoLogin:
                 print("登录超时")
                 return None
             
-            cookies = self.driver.get_cookies()
+            if self.driver != None:
+                cookies = self.driver.get_cookies()
             cookie_dict = {}
             
             for cookie in cookies:

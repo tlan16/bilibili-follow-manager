@@ -421,6 +421,10 @@ class BilibiliManagerGUI:
             self.root.after(0, lambda: self.update_status("🔄 正在获取关注列表..."))
             
             try:
+                if self.api is None:
+                    self.root.after(0, lambda: messagebox.showerror("❌ 错误", "请先登录以获取关注列表"))
+                    self.root.after(0, self.refresh_failed)
+                    return
                 following_list = self.api.get_all_following()
                 self.root.after(0, lambda: self.update_following_list(following_list))
             except Exception:
@@ -534,9 +538,12 @@ class BilibiliManagerGUI:
                     
                     self.root.after(0, lambda u=username: self.update_status(f"🔄 正在取消关注: {u}"))
                     
-                    if self.api.unfollow_user(uid):
-                        success_count += 1
-                        self.root.after(0, lambda i=item: self.tree.delete(i))
+                    if self.api and hasattr(self.api, "unfollow_user") and callable(getattr(self.api, "unfollow_user")):
+                        if self.api.unfollow_user(uid):
+                            success_count += 1
+                            self.root.after(0, lambda i=item: self.tree.delete(i))
+                    else:
+                        raise AttributeError("API对象未实现unfollow_user方法")
                 
                 except Exception:
                     continue
@@ -570,7 +577,8 @@ class BilibiliManagerGUI:
                 }
                 simplified_list.append(simplified_user)
             
-            filename = f"bilibili_following_{len(simplified_list)}_users_简化版.json"
+            localtime = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+            filename = f"bilibili_following_{localtime}_{len(simplified_list)}_users.json"
             with open(filename, 'w', encoding='utf-8') as f:
                 json.dump(simplified_list, f, indent=2, ensure_ascii=False)
             
@@ -580,7 +588,7 @@ class BilibiliManagerGUI:
             messagebox.showerror("❌ 错误", f"导出失败：{str(e)}")
     
     def import_and_follow(self):
-        """导入文件并批量关注所有用户"""
+        """导入文件并显示选择界面"""
         # 选择文件
         file_path = filedialog.askopenfilename(
             title="选择要导入的关注列表文件",
@@ -607,54 +615,286 @@ class BilibiliManagerGUI:
                 messagebox.showerror("❌ 错误", "文件中没有用户数据")
                 return
             
-            # 检测文件格式并提取UID
-            uids_to_follow = []
-            file_format = "unknown"
+            # 解析用户数据
+            parsed_users = self.parse_user_data(user_list)
             
-            # 检查是否是简化版格式（中文字段名）
-            if 'UID' in user_list[0]:
-                file_format = "simplified"
-                for user in user_list:
-                    uid = user.get('UID')
-                    if uid:
-                        uids_to_follow.append(int(uid))
-            
-            # 检查是否是原始格式（英文字段名）
-            elif 'mid' in user_list[0]:
-                file_format = "original"
-                for user in user_list:
-                    uid = user.get('mid')
-                    if uid:
-                        uids_to_follow.append(int(uid))
-            
-            if not uids_to_follow:
-                messagebox.showerror("❌ 错误", "文件中没有找到有效的用户ID")
+            if not parsed_users:
+                messagebox.showerror("❌ 错误", "文件中没有找到有效的用户数据")
                 return
             
-            # 确认操作
-            username_sample = ""
-            if file_format == "simplified" and 'username' in user_list[0]:
-                username_sample = f"\n例如：{user_list[0].get('用户名', '未知')}"
-            elif file_format == "original" and 'uname' in user_list[0]:
-                username_sample = f"\n例如：{user_list[0].get('uname', '未知')}"
-            
-            if not messagebox.askyesno("🔔 确认批量关注", 
-                                      f"确定要关注文件中的 {len(uids_to_follow)} 个用户吗？{username_sample}\n\n"
-                                      f"⚠️ 此操作将会逐个关注这些用户\n"
-                                      f"⏱️ 预计需要 {len(uids_to_follow)//10}-{len(uids_to_follow)//5} 分钟",
-                                      icon="question"):
-                return
-            
-            # 开始批量关注
-            self.start_batch_follow(uids_to_follow, file_path)
+            # 打开选择界面
+            self.show_import_selection_window(parsed_users, file_path)
             
         except json.JSONDecodeError:
             messagebox.showerror("❌ 错误", "文件不是有效的JSON格式")
         except Exception as e:
             messagebox.showerror("❌ 错误", f"读取文件失败：{str(e)}")
     
+    def parse_user_data(self, user_list):
+        """解析用户数据，提取关键信息"""
+        parsed_users = []
+        
+        for user in user_list:
+            user_info = {}
+            
+            # 检查是否是简化版格式（中文字段名）
+            if 'UID' in user:
+                user_info['uid'] = user.get('UID')
+                user_info['username'] = user.get('用户名', '未知用户')
+                user_info['signature'] = user.get('签名', '')
+                user_info['follow_time'] = user.get('关注时间', '')
+            
+            # 检查是否是原始格式（英文字段名）
+            elif 'mid' in user:
+                user_info['uid'] = user.get('mid')
+                user_info['username'] = user.get('uname', '未知用户')
+                user_info['signature'] = user.get('sign', '')
+                user_info['follow_time'] = user.get('mtime_format', '')
+            
+            else:
+                continue  # 跳过格式不正确的条目
+            
+            # 确保UID是整数
+            try:
+                user_info['uid'] = int(user_info['uid'])
+                parsed_users.append(user_info)
+            except (ValueError, TypeError):
+                continue  # 跳过UID无效的条目
+        
+        return parsed_users
+    
+    def show_import_selection_window(self, users_data, file_path):
+        """显示导入选择窗口"""
+        # 创建新窗口
+        selection_window = tk.Toplevel(self.root)
+        selection_window.title("📤 选择要关注的UP主")
+        selection_window.geometry("1000x800")
+        selection_window.minsize(900, 700)
+        selection_window.configure(bg=self.colors['bg_light'])
+        
+        # 设置窗口图标和居中
+        selection_window.transient(self.root)
+        selection_window.grab_set()
+        
+        # 居中显示
+        selection_window.update_idletasks()
+        x = (selection_window.winfo_screenwidth() // 2) - (1000 // 2)
+        y = (selection_window.winfo_screenheight() // 2) - (800 // 2)
+        selection_window.geometry(f"1000x800+{x}+{y}")
+        
+        # 主容器
+        main_frame = tk.Frame(selection_window, bg=self.colors['bg_light'])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # 标题
+        title_frame = tk.Frame(main_frame, bg=self.colors['bg_light'])
+        title_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        title_label = tk.Label(title_frame,
+                              text="📤 选择要关注的UP主",
+                              font=("Microsoft YaHei UI", 18, "bold"),
+                              fg=self.colors['primary'],
+                              bg=self.colors['bg_light'])
+        title_label.pack()
+        
+        subtitle_label = tk.Label(title_frame,
+                                 text=f"从文件 {os.path.basename(file_path)} 中找到 {len(users_data)} 个UP主",
+                                 font=("Microsoft YaHei UI", 10),
+                                 fg=self.colors['text_secondary'],
+                                 bg=self.colors['bg_light'])
+        subtitle_label.pack(pady=(5, 0))
+        
+        # 工具栏
+        toolbar_frame = tk.Frame(main_frame, bg=self.colors['bg_light'])
+        toolbar_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # 左侧按钮
+        left_buttons = tk.Frame(toolbar_frame, bg=self.colors['bg_light'])
+        left_buttons.pack(side=tk.LEFT)
+        
+        select_all_btn = tk.Button(left_buttons, text="全选",
+                                  command=lambda: self.selection_select_all(selection_tree, users_data),
+                                  bg='#F0F0F0',
+                                  fg=self.colors['text_primary'],
+                                  font=('Microsoft YaHei UI', 9),
+                                  relief='flat',
+                                  padx=15, pady=6,
+                                  cursor='hand2',
+                                  activebackground='#E0E0E0')
+        select_all_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        select_none_btn = tk.Button(left_buttons, text="取消全选",
+                                   command=lambda: self.selection_select_none(selection_tree),
+                                   bg='#F0F0F0',
+                                   fg=self.colors['text_primary'],
+                                   font=('Microsoft YaHei UI', 9),
+                                   relief='flat',
+                                   padx=15, pady=6,
+                                   cursor='hand2',
+                                   activebackground='#E0E0E0')
+        select_none_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # 统计信息
+        stats_label = tk.Label(toolbar_frame,
+                              text="已选择: 0 个",
+                              font=("Microsoft YaHei UI", 10),
+                              fg=self.colors['text_secondary'],
+                              bg=self.colors['bg_light'])
+        stats_label.pack(side=tk.RIGHT)
+        
+        # 列表框架
+        list_frame = ttk.LabelFrame(main_frame, text="  UP主列表  ", padding=15)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        # 创建Treeview
+        tree_frame = tk.Frame(list_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 滚动条
+        v_scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL)
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 树形视图
+        selection_tree = ttk.Treeview(tree_frame,
+                                     columns=("username", "uid", "signature", "follow_time"),
+                                     show="tree headings",
+                                     yscrollcommand=v_scrollbar.set,
+                                     height=20)
+        selection_tree.pack(fill=tk.BOTH, expand=True)
+        
+        v_scrollbar.config(command=selection_tree.yview)
+        
+        # 设置列标题和宽度
+        selection_tree.heading("#0", text="选择", anchor=tk.W)
+        selection_tree.heading("username", text="用户名", anchor=tk.W)
+        selection_tree.heading("uid", text="UID", anchor=tk.W)
+        selection_tree.heading("signature", text="签名", anchor=tk.W)
+        selection_tree.heading("follow_time", text="关注时间", anchor=tk.W)
+        
+        selection_tree.column("#0", width=60, minwidth=60)
+        selection_tree.column("username", width=150, minwidth=100)
+        selection_tree.column("uid", width=100, minwidth=80)
+        selection_tree.column("signature", width=300, minwidth=200)
+        selection_tree.column("follow_time", width=150, minwidth=120)
+        
+        # 存储选中状态
+        checked_users = {}
+        
+        # 填充数据
+        for user in users_data:
+            item_id = selection_tree.insert("", tk.END,
+                                           text="☐",
+                                           values=(user['username'],
+                                                  user['uid'],
+                                                  user['signature'][:50] + "..." if len(user['signature']) > 50 else user['signature'],
+                                                  user['follow_time']))
+            checked_users[item_id] = False
+        
+        # 点击事件处理
+        def on_item_click(event):
+            region = selection_tree.identify_region(event.x, event.y)
+            item = selection_tree.identify_row(event.y)
+            
+            if item and region == "tree":
+                # 切换选中状态
+                checked_users[item] = not checked_users[item]
+                
+                if checked_users[item]:
+                    selection_tree.item(item, text="☑")
+                else:
+                    selection_tree.item(item, text="☐")
+                
+                # 更新统计
+                selected_count = sum(checked_users.values())
+                stats_label.config(text=f"已选择: {selected_count} 个")
+        
+        selection_tree.bind("<Button-1>", on_item_click)
+        
+        # 底部按钮
+        button_frame = tk.Frame(main_frame, bg=self.colors['bg_light'])
+        button_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        # 取消按钮
+        cancel_btn = tk.Button(button_frame, text="❌ 取消",
+                              command=selection_window.destroy,
+                              bg='#F5F5F5',
+                              fg=self.colors['text_primary'],
+                              font=('Microsoft YaHei UI', 10),
+                              relief='flat',
+                              padx=20, pady=8,
+                              cursor='hand2',
+                              activebackground='#E8E8E8')
+        cancel_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        # 确认关注按钮
+        confirm_btn = tk.Button(button_frame, text="✅ 确认关注",
+                               command=lambda: self.confirm_import_selection(
+                                   selection_window, selection_tree, users_data, checked_users, file_path),
+                               bg=self.colors['success'],
+                               fg='white',
+                               font=('Microsoft YaHei UI', 10, 'bold'),
+                               relief='flat',
+                               padx=20, pady=8,
+                               cursor='hand2',
+                               activebackground='#389E0D')
+        confirm_btn.pack(side=tk.RIGHT)
+        
+        # 存储引用以便在其他方法中使用
+        self.selection_tree = selection_tree
+        self.selection_stats_label = stats_label
+        self.selection_checked_users = checked_users
+    
+    def selection_select_all(self, tree, users_data):
+        """全选所有用户"""
+        for item in self.selection_checked_users:
+            self.selection_checked_users[item] = True
+            tree.item(item, text="☑")
+        
+        self.selection_stats_label.config(text=f"已选择: {len(users_data)} 个")
+    
+    def selection_select_none(self, tree):
+        """取消全选"""
+        for item in self.selection_checked_users:
+            self.selection_checked_users[item] = False
+            tree.item(item, text="☐")
+        
+        self.selection_stats_label.config(text="已选择: 0 个")
+    
+    def confirm_import_selection(self, window, tree, users_data, checked_users, file_path):
+        """确认导入选择的用户"""
+        # 获取选中的用户
+        selected_users = []
+        for i, (item_id, is_checked) in enumerate(checked_users.items()):
+            if is_checked:
+                selected_users.append(users_data[i])
+        
+        if not selected_users:
+            messagebox.showwarning("⚠️ 提示", "请至少选择一个要关注的UP主")
+            return
+        
+        # 确认操作
+        if not messagebox.askyesno("🔔 确认批量关注", 
+                                  f"确定要关注选中的 {len(selected_users)} 个UP主吗？\n\n"
+                                  f"⚠️ 此操作将会逐个关注这些用户\n"
+                                  f"⏱️ 预计需要 {len(selected_users)//10 + 1}-{len(selected_users)//5 + 1} 分钟",
+                                  icon="question"):
+            return
+        
+        # 关闭选择窗口
+        window.destroy()
+        
+        # 提取UID列表
+        uids_to_follow = [user['uid'] for user in selected_users]
+        
+        # 开始批量关注
+        self.start_batch_follow(uids_to_follow, file_path)
+    
     def start_batch_follow(self, uids_to_follow, file_path):
         """开始批量关注操作"""
+        if not self.api:
+            messagebox.showerror("❌ 错误", "API未初始化，请先设置登录")
+            return
+            
         def follow_thread():
             self.root.after(0, lambda: self.import_follow_button.config(state="disabled"))
             self.root.after(0, lambda: self.update_status("🔄 正在批量关注用户..."))
@@ -668,8 +908,11 @@ class BilibiliManagerGUI:
                     self.root.after(0, lambda current=i+1, total=total: 
                                   self.update_status(f"🔄 正在关注用户 ({current}/{total})..."))
                     
-                    if self.api.follow_user(uid):
-                        success_count += 1
+                    if self.api and hasattr(self.api, "follow_user") and callable(getattr(self.api, "follow_user")):
+                        if self.api.follow_user(uid):
+                            success_count += 1
+                        else:
+                            failed_count += 1
                     else:
                         failed_count += 1
                     
