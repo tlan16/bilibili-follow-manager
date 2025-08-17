@@ -1,8 +1,19 @@
 import requests
 import json
 import time
+import os
+import sys
 from typing import List, Dict, Optional
 import logging
+
+def get_app_dir():
+    """获取应用程序目录"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的可执行文件
+        return os.path.dirname(sys.executable)
+    else:
+        # 开发环境
+        return os.path.dirname(os.path.abspath(__file__))
 
 class BilibiliAPI:
     """Bilibili API 客户端"""
@@ -13,8 +24,9 @@ class BilibiliAPI:
         Args:
             config_path: 配置文件路径
         """
+        self.config_path = os.path.join(get_app_dir(), config_path)
         self.session = requests.Session()
-        self.config = self._load_config(config_path)
+        self.config = self._load_config(self.config_path)
         self._setup_session()
         
         # 设置日志

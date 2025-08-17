@@ -47,3 +47,8 @@ ENV/
 *.spec
 build/
 dist/
+
+# 构建工具（开发用）
+build.py
+build.bat
+quick_build.bat

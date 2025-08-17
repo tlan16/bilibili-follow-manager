@@ -4,11 +4,21 @@
 import json
 import time
 import os
+import sys
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from typing import Dict, Optional
+
+def get_app_dir():
+    """获取应用程序目录"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的可执行文件
+        return os.path.dirname(sys.executable)
+    else:
+        # 开发环境
+        return os.path.dirname(os.path.abspath(__file__))
 
 class BilibiliAutoLogin:
     
@@ -116,7 +126,8 @@ class BilibiliAutoLogin:
             config_template["cookies"]["bili_jct"] = cookies.get("bili_jct", "")
             config_template["cookies"]["DedeUserID"] = cookies.get("DedeUserID", "")
             
-            with open('config.json', 'w', encoding='utf-8') as f:
+            config_file_path = os.path.join(get_app_dir(), 'config.json')
+            with open(config_file_path, 'w', encoding='utf-8') as f:
                 json.dump(config_template, f, indent=2, ensure_ascii=False)
             
             return True

@@ -3,9 +3,19 @@ from tkinter import ttk, messagebox, filedialog
 import threading
 import json
 import os
+import sys
 import time
 from bilibili_api import BilibiliAPI
 from auto_login import auto_login_setup
+
+def get_app_dir():
+    """获取应用程序目录"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的可执行文件
+        return os.path.dirname(sys.executable)
+    else:
+        # 开发环境
+        return os.path.dirname(os.path.abspath(__file__))
 
 class BilibiliManagerGUI:
     def __init__(self, root):
@@ -19,6 +29,7 @@ class BilibiliManagerGUI:
         self.api = None
         self.following_list = []
         self.checked_items = {}  # 存储选中状态
+        self.item_data = {}      # 存储 tree item ID 到完整用户数据的映射
         
         self.create_widgets()
         self.check_config()
@@ -306,7 +317,8 @@ class BilibiliManagerGUI:
         self.status_bar.pack(fill=tk.BOTH, padx=10, pady=5)
     
     def check_config(self):
-        if os.path.exists('config.json'):
+        config_path = os.path.join(get_app_dir(), 'config.json')
+        if os.path.exists(config_path):
             try:
                 self.api = BilibiliAPI()
                 user_info = self.api.get_user_info()
@@ -359,8 +371,9 @@ class BilibiliManagerGUI:
         
         try:
             # 删除配置文件
-            if os.path.exists('config.json'):
-                os.remove('config.json')
+            config_path = os.path.join(get_app_dir(), 'config.json')
+            if os.path.exists(config_path):
+                os.remove(config_path)
             
             # 重置API对象
             self.api = None
@@ -440,6 +453,7 @@ class BilibiliManagerGUI:
         
         self.following_list = following_list
         self.checked_items = {}  # 重置选中状态
+        self.item_data = {}      # 重置数据映射
         
         for user in following_list:
             # 格式化时间显示
@@ -458,6 +472,7 @@ class BilibiliManagerGUI:
                 sign
             ))
             self.checked_items[item_id] = False
+            self.item_data[item_id] = user  # 保存完整的用户数据
         
         self.refresh_button.config(state="normal")
         self.count_label.config(text=f"共 {len(following_list)} 个关注")
@@ -566,24 +581,29 @@ class BilibiliManagerGUI:
         try:
             # 只导出重要的数据字段
             simplified_list = []
-            for user in selected_items:
-                simplified_user = {
-                    '用户名': user.get('uname', '未知'),
-                    'UID': user.get('mid', ''),
-                    '关注时间': user.get('mtime_str', '未知'),
-                    '关注时间戳': user.get('mtime', ''),
-                    '签名': user.get('sign', '').strip() or '暂无签名',
-                    '官方认证': user.get('official_verify', {}).get('desc', '') if user.get('official_verify') else '',
-                    '头像链接': user.get('face', '')
-                }
-                simplified_list.append(simplified_user)
+            for item_id in selected_items:
+                # 从数据映射获取完整的用户数据
+                user = self.item_data.get(item_id)
+                if user:
+                    simplified_user = {
+                        '用户名': user.get('uname', '未知'),
+                        'UID': user.get('mid', ''),
+                        '关注时间': user.get('mtime_str', '未知'),
+                        '关注时间戳': user.get('mtime', ''),
+                        '签名': user.get('sign', '').strip() or '暂无签名',
+                        '官方认证': user.get('official_verify', {}).get('desc', '') if user.get('official_verify') else '',
+                        '头像链接': user.get('face', '')
+                    }
+                    simplified_list.append(simplified_user)
             
             localtime = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
             filename = f"bilibili_following_{localtime}_{len(simplified_list)}_users.json"
-            with open(filename, 'w', encoding='utf-8') as f:
+            # 将文件保存到应用程序目录
+            file_path = os.path.join(get_app_dir(), filename)
+            with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(simplified_list, f, indent=2, ensure_ascii=False)
             
-            messagebox.showinfo("🎉 成功", f"关注列表已导出到:\n{filename}\n\n📊 已导出 {len(simplified_list)} 个用户的重要信息")
+            messagebox.showinfo("🎉 成功", f"关注列表已导出到:\n{file_path}\n\n📊 已导出 {len(simplified_list)} 个用户的重要信息")
             self.update_status(f"📥 列表已导出到 {filename}")
         except Exception as e:
             messagebox.showerror("❌ 错误", f"导出失败：{str(e)}")
@@ -597,7 +617,7 @@ class BilibiliManagerGUI:
                 ("JSON文件", "*.json"),
                 ("所有文件", "*.*")
             ],
-            initialdir=os.getcwd()
+            initialdir=get_app_dir()
         )
         
         if not file_path:
