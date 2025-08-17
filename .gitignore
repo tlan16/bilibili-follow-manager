@@ -41,3 +41,9 @@ ENV/
 # 临时文件
 *.tmp
 *.temp
+
+
+# PyInstaller 构建文件
+*.spec
+build/
+dist/
