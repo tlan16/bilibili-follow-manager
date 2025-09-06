@@ -1,5 +1,6 @@
+import copy
 import json
-from typing import Dict, List
+from typing import Dict, List, Iterable, Generator
 
 from bilibili_api import BilibiliAPI
 import sys
@@ -37,20 +38,48 @@ def check_config() -> Dict | None:
     else:
         print("💡 首次使用？登录吧")
 
-def refresh_following():
+def generate_newpipe_data(following_list_generator: Iterable[Dict]) -> Dict:
+    result = {
+        "app_version": "4.7.2",
+        "app_version_int": 108500,
+        "subscriptions": []
+    }
+
+    for user in following_list_generator:
+        user_with_newpipe_fields = copy.deepcopy(user)
+        mid = user.get('mid')
+        uname = user.get('uname')
+        if mid and uname:
+            result['subscriptions'].append({
+                "service_id": 5,
+                "url": f"https://space.bilibili.com/{mid}",
+                "name": uname
+            })
+    return result
+
+def get_all_following() -> Generator[Dict]:
     print("🔄 正在获取关注列表...")
-    return api.get_all_following()
+    yield from api.get_all_following()
 
-def export_list(following_list: List[Dict]):
+def export_list():
+    bilibili_data = list(get_all_following())
+    newpipe_data = generate_newpipe_data(bilibili_data)
     localtime = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
-    filename = f"bilibili_following_{localtime}_{len(following_list)}_users.json"
-    # 将文件保存到应用程序目录
-    file_path = os.path.join(get_app_dir(), filename)
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(following_list, f, indent=2, ensure_ascii=False)
+    filename_raw = f"bilibili_following_{localtime}_{len(bilibili_data)}_raw.json"
 
-    print("🎉 成功", f"关注列表已导出到:\n{file_path}\n\n📊 已导出 {len(following_list)} 个用户的重要信息")
-    print(f"📥 列表已导出到 {filename}")
+    # Example: newpipe_subscriptions_202509061543.json
+    localtime = time.strftime("%Y%m%d%H%M", time.localtime())
+    filename_newpipe = f"newpipe_subscriptions_{localtime}.json"
+    # 将文件保存到应用程序目录
+    file_path = os.path.join(get_app_dir(), filename_raw)
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(filename_raw, f, indent=2, ensure_ascii=False)
+    print("🎉 成功", f"关注列表已导出到:\n{file_path}\n\n📊 已导出 {len(filename_raw)} 个用户的重要信息")
+
+    file_path = os.path.join(get_app_dir(), filename_newpipe)
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(newpipe_data, f, ensure_ascii=False)
+    print("🎉 成功", f"关注列表已导出到:\n{file_path}\n\n📊 已导出 {len(filename_newpipe)} 个用户的重要信息")
 
 
 def main() -> None:
@@ -62,9 +91,7 @@ def main() -> None:
         auto_login_setup()
     assert check_config(), "登录失败，无法继续"
 
-    following_list = refresh_following()
-    print(f"总共获取到 {len(following_list)} 个关注用户")
-    export_list(following_list)
+    export_list()
 
 
 if __name__ == "__main__":
